@@ -9,8 +9,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+/* =========================
+   TELEGRAM SETTINGS
+========================= */
+
 const BOT_TOKEN = '8645227789:AAEbpT3bW_qSUllPG4vgZ5NnoRnYXUPjYR8';
 const CHAT_ID = '1761198919';
+
+/* =========================
+   DATABASE CONNECTION
+========================= */
 
 const pool = new Pool({
   connectionString:
@@ -19,6 +27,10 @@ const pool = new Pool({
     rejectUnauthorized: false,
   },
 });
+
+/* =========================
+   TELEGRAM FUNCTION
+========================= */
 
 async function sendTelegram(message) {
   try {
@@ -34,9 +46,32 @@ async function sendTelegram(message) {
   }
 }
 
+/* =========================
+   HOME ROUTE
+========================= */
+
 app.get('/', (req, res) => {
   res.send('Zyne Backend Running');
 });
+
+/* =========================
+   TEST DATABASE
+========================= */
+
+app.get('/test-db', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW()');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+    });
+  }
+});
+
+/* =========================
+   CLICK API
+========================= */
 
 app.post('/click', async (req, res) => {
   try {
@@ -45,8 +80,9 @@ app.post('/click', async (req, res) => {
     const click_id = uuidv4();
 
     await pool.query(
-      `INSERT INTO clicks (click_id, upi_id, offer_id)
-       VALUES ($1, $2, $3)`,
+      `INSERT INTO clicks
+      (click_id, upi_id, offer_id)
+      VALUES ($1, $2, $3)`,
       [click_id, upi_id, offer_id]
     );
 
@@ -70,6 +106,88 @@ Click ID: ${click_id}
     });
   }
 });
+
+/* =========================
+   POSTBACK API
+========================= */
+
+app.get('/postback', async (req, res) => {
+  try {
+    const { click_id, amount } = req.query;
+
+    const clickResult = await pool.query(
+      `SELECT * FROM clicks WHERE click_id = $1`,
+      [click_id]
+    );
+
+    if (clickResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Invalid click_id',
+      });
+    }
+
+    const clickData = clickResult.rows[0];
+
+    const upi_id = clickData.upi_id;
+
+    /* SAVE CONVERSION */
+
+    await pool.query(
+      `INSERT INTO conversions
+      (click_id, upi_id, amount, status)
+      VALUES ($1, $2, $3, $4)`,
+      [click_id, upi_id, amount, 'approved']
+    );
+
+    /* CHECK WALLET */
+
+    const walletCheck = await pool.query(
+      `SELECT * FROM wallet WHERE upi_id = $1`,
+      [upi_id]
+    );
+
+    if (walletCheck.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO wallet
+        (upi_id, balance, total_earned)
+        VALUES ($1, $2, $3)`,
+        [upi_id, amount, amount]
+      );
+    } else {
+      await pool.query(
+        `UPDATE wallet
+         SET balance = balance + $1,
+             total_earned = total_earned + $1
+         WHERE upi_id = $2`,
+        [amount, upi_id]
+      );
+    }
+
+    /* TELEGRAM ALERT */
+
+    const msg = `
+🟢 OFFER COMPLETED
+
+UPI: ${upi_id}
+Amount: ₹${amount}
+Click ID: ${click_id}
+`;
+
+    await sendTelegram(msg);
+
+    res.json({
+      success: true,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+    });
+  }
+});
+
+/* =========================
+   START SERVER
+========================= */
 
 app.listen(3000, () => {
   console.log('Server Running');
