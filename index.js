@@ -191,4 +191,30 @@ Click ID: ${click_id}
 
 app.listen(3000, () => {
   console.log('Server Running');
+});/* =========================
+   WALLET API
+========================= */
+
+app.post('/wallet', async (req, res) => {
+  try {
+    const { upi_id } = req.body;
+
+    const result = await pool.query(
+      `SELECT * FROM wallet WHERE upi_id = $1`,
+      [upi_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        balance: 0,
+        total_earned: 0,
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+    });
+  }
 });
