@@ -13,8 +13,13 @@ app.use(express.json());
    TELEGRAM SETTINGS
 ========================= */
 
-const BOT_TOKEN = '8645227789:AAEbpT3bW_qSUllPG4vgZ5NnoRnYXUPjYR8';
-const CHAT_ID = '1761198919';
+const BOT_TOKEN = '8645227789:AAENSRZ5rHsfyh8kvQ1MHLjcj6hZxr_fTeQ';
+
+/* PERSONAL TELEGRAM */
+const ADMIN_CHAT_ID = '1761198919';
+
+/* TRACKING CHANNEL */
+const TRACKING_CHANNEL_ID = '-1003963402892';
 
 /* =========================
    DATABASE CONNECTION
@@ -32,12 +37,12 @@ const pool = new Pool({
    TELEGRAM FUNCTION
 ========================= */
 
-async function sendTelegram(message) {
+async function sendTelegram(chatId, message) {
   try {
     await axios.post(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       {
-        chat_id: CHAT_ID,
+        chat_id: chatId,
         text: message,
       }
     );
@@ -75,9 +80,13 @@ app.get('/test-db', async (req, res) => {
 
 app.post('/click', async (req, res) => {
   try {
-    const { upi_id, offer_id } = req.body;
+
+    const upi_id = req.body.upi_id;
+    const offer_id = req.body.offer_id;
 
     const click_id = uuidv4();
+
+    /* SAVE CLICK */
 
     await pool.query(
       `INSERT INTO clicks
@@ -85,6 +94,8 @@ app.post('/click', async (req, res) => {
       VALUES ($1, $2, $3)`,
       [click_id, upi_id, offer_id]
     );
+
+    /* TRACKING ALERT */
 
     const msg = `
 🟡 OFFER CLICK
@@ -94,16 +105,19 @@ Offer ID: ${offer_id}
 Click ID: ${click_id}
 `;
 
-    await sendTelegram(msg);
+    await sendTelegram(TRACKING_CHANNEL_ID, msg);
 
     res.json({
       success: true,
       click_id,
     });
+
   } catch (err) {
+
     res.status(500).json({
       error: err.message,
     });
+
   }
 });
 
@@ -112,8 +126,13 @@ Click ID: ${click_id}
 ========================= */
 
 app.get('/postback', async (req, res) => {
+
   try {
-    const { click_id, amount } = req.query;
+
+    const click_id = req.query.click_id;
+    const amount = Number(req.query.amount);
+
+    /* CHECK CLICK */
 
     const clickResult = await pool.query(
       `SELECT * FROM clicks WHERE click_id = $1`,
@@ -121,13 +140,14 @@ app.get('/postback', async (req, res) => {
     );
 
     if (clickResult.rows.length === 0) {
+
       return res.status(404).json({
         error: 'Invalid click_id',
       });
+
     }
 
     const clickData = clickResult.rows[0];
-
     const upi_id = clickData.upi_id;
 
     /* SAVE CONVERSION */
@@ -147,13 +167,20 @@ app.get('/postback', async (req, res) => {
     );
 
     if (walletCheck.rows.length === 0) {
+
+      /* CREATE WALLET */
+
       await pool.query(
         `INSERT INTO wallet
         (upi_id, balance, total_earned)
         VALUES ($1, $2, $3)`,
         [upi_id, amount, amount]
       );
+
     } else {
+
+      /* UPDATE WALLET */
+
       await pool.query(
         `UPDATE wallet
          SET balance = balance + $1,
@@ -161,7 +188,10 @@ app.get('/postback', async (req, res) => {
          WHERE upi_id = $2`,
         [amount, upi_id]
       );
+
     }
+
+    /* COMPLETE ALERT */
 
     const msg = `
 🟢 OFFER COMPLETED
@@ -171,15 +201,18 @@ Amount: ₹${amount}
 Click ID: ${click_id}
 `;
 
-    await sendTelegram(msg);
+    await sendTelegram(TRACKING_CHANNEL_ID, msg);
 
     res.json({
       success: true,
     });
+
   } catch (err) {
+
     res.status(500).json({
       error: err.message,
     });
+
   }
 });
 
@@ -188,8 +221,10 @@ Click ID: ${click_id}
 ========================= */
 
 app.post('/wallet', async (req, res) => {
+
   try {
-    const { upi_id } = req.body;
+
+    const upi_id = req.body.upi_id;
 
     const result = await pool.query(
       `SELECT * FROM wallet WHERE upi_id = $1`,
@@ -197,17 +232,52 @@ app.post('/wallet', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+
       return res.json({
         balance: 0,
         total_earned: 0,
       });
+
     }
 
     res.json(result.rows[0]);
+
   } catch (err) {
+
     res.status(500).json({
       error: err.message,
     });
+
+  }
+});
+
+/* =========================
+   TASK HISTORY API
+========================= */
+
+app.post('/history', async (req, res) => {
+
+  try {
+
+    const upi_id = req.body.upi_id;
+
+    const result = await pool.query(
+      `SELECT *
+       FROM conversions
+       WHERE upi_id = $1
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [upi_id]
+    );
+
+    res.json(result.rows);
+
+  } catch (err) {
+
+    res.status(500).json({
+      error: err.message,
+    });
+
   }
 });
 
@@ -216,8 +286,13 @@ app.post('/wallet', async (req, res) => {
 ========================= */
 
 app.post('/withdraw', async (req, res) => {
+
   try {
-    const { upi_id, amount } = req.body;
+
+    const upi_id = req.body.upi_id;
+    const amount = Number(req.body.amount);
+
+    /* CHECK WALLET */
 
     const walletResult = await pool.query(
       `SELECT * FROM wallet WHERE upi_id = $1`,
@@ -225,17 +300,33 @@ app.post('/withdraw', async (req, res) => {
     );
 
     if (walletResult.rows.length === 0) {
+
       return res.status(404).json({
         error: 'Wallet not found',
       });
+
     }
 
     const wallet = walletResult.rows[0];
 
+    /* MINIMUM WITHDRAW */
+
+    if (amount < 10) {
+
+      return res.status(400).json({
+        error: 'Minimum withdrawal is ₹10',
+      });
+
+    }
+
+    /* INSUFFICIENT BALANCE */
+
     if (wallet.balance < amount) {
+
       return res.status(400).json({
         error: 'Insufficient balance',
       });
+
     }
 
     /* DEDUCT BALANCE */
@@ -256,7 +347,7 @@ app.post('/withdraw', async (req, res) => {
       [upi_id, amount, 'pending']
     );
 
-    /* TELEGRAM ALERT */
+    /* ADMIN ALERT */
 
     const msg = `
 💸 WITHDRAWAL REQUEST
@@ -265,15 +356,18 @@ UPI: ${upi_id}
 Amount: ₹${amount}
 `;
 
-    await sendTelegram(msg);
+    await sendTelegram(ADMIN_CHAT_ID, msg);
 
     res.json({
       success: true,
     });
+
   } catch (err) {
+
     res.status(500).json({
       error: err.message,
     });
+
   }
 });
 
