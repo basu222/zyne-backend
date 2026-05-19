@@ -15,10 +15,10 @@ app.use(express.json());
 
 const BOT_TOKEN = '8645227789:AAENSRZ5rHsfyh8kvQ1MHLjcj6hZxr_fTeQ';
 
-/* PERSONAL TELEGRAM */
+/* YOUR PERSONAL TELEGRAM ID */
 const ADMIN_CHAT_ID = '1761198919';
 
-/* TRACKING CHANNEL */
+/* TRACKING CHANNEL ID */
 const TRACKING_CHANNEL_ID = '-1003963402892';
 
 /* =========================
@@ -65,12 +65,142 @@ app.get('/', (req, res) => {
 
 app.get('/test-db', async (req, res) => {
   try {
+
     const result = await pool.query('SELECT NOW()');
+
     res.json(result.rows);
+
   } catch (err) {
+
     res.status(500).json({
       error: err.message,
     });
+
+  }
+});
+
+/* =========================
+   GET OFFERS API
+========================= */
+
+app.get('/offers', async (req, res) => {
+  try {
+
+    const result = await pool.query(
+      `SELECT *
+       FROM offers
+       WHERE status = 'active'
+       ORDER BY id DESC`
+    );
+
+    res.json(result.rows);
+
+  } catch (err) {
+
+    res.status(500).json({
+      error: err.message,
+    });
+
+  }
+});
+
+/* =========================
+   ADD OFFER API
+========================= */
+
+app.post('/add-offer', async (req, res) => {
+  try {
+
+    const {
+      title,
+      reward,
+      image,
+      tracking_link
+    } = req.body;
+
+    await pool.query(
+      `INSERT INTO offers
+      (title, reward, image, tracking_link)
+      VALUES ($1, $2, $3, $4)`,
+      [title, reward, image, tracking_link]
+    );
+
+    res.json({
+      success: true,
+    });
+
+  } catch (err) {
+
+    res.status(500).json({
+      error: err.message,
+    });
+
+  }
+});
+
+/* =========================
+   DELETE OFFER API
+========================= */
+
+app.post('/delete-offer', async (req, res) => {
+  try {
+
+    const { id } = req.body;
+
+    await pool.query(
+      `DELETE FROM offers WHERE id = $1`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+    });
+
+  } catch (err) {
+
+    res.status(500).json({
+      error: err.message,
+    });
+
+  }
+});
+
+/* =========================
+   DASHBOARD STATS API
+========================= */
+
+app.get('/dashboard-stats', async (req, res) => {
+  try {
+
+    const clicks = await pool.query(
+      `SELECT COUNT(*) FROM clicks`
+    );
+
+    const conversions = await pool.query(
+      `SELECT COUNT(*) FROM conversions`
+    );
+
+    const revenue = await pool.query(
+      `SELECT COALESCE(SUM(amount),0) FROM conversions`
+    );
+
+    const withdrawals = await pool.query(
+      `SELECT COUNT(*) FROM withdrawals`
+    );
+
+    res.json({
+      total_clicks: clicks.rows[0].count,
+      total_conversions: conversions.rows[0].count,
+      total_revenue: revenue.rows[0].coalesce,
+      total_withdrawals: withdrawals.rows[0].count,
+    });
+
+  } catch (err) {
+
+    res.status(500).json({
+      error: err.message,
+    });
+
   }
 });
 
@@ -105,7 +235,7 @@ Offer ID: ${offer_id}
 Click ID: ${click_id}
 `;
 
-    await sendTelegram(TRACKING_CHANNEL_ID, msg);
+    await sendTelegram('-1003963402892', msg);
 
     res.json({
       success: true,
@@ -126,7 +256,6 @@ Click ID: ${click_id}
 ========================= */
 
 app.get('/postback', async (req, res) => {
-
   try {
 
     const click_id = req.query.click_id;
@@ -201,7 +330,7 @@ Amount: ₹${amount}
 Click ID: ${click_id}
 `;
 
-    await sendTelegram(TRACKING_CHANNEL_ID, msg);
+    await sendTelegram('-1003963402892', msg);
 
     res.json({
       success: true,
@@ -221,7 +350,6 @@ Click ID: ${click_id}
 ========================= */
 
 app.post('/wallet', async (req, res) => {
-
   try {
 
     const upi_id = req.body.upi_id;
@@ -256,7 +384,6 @@ app.post('/wallet', async (req, res) => {
 ========================= */
 
 app.post('/history', async (req, res) => {
-
   try {
 
     const upi_id = req.body.upi_id;
@@ -286,7 +413,6 @@ app.post('/history', async (req, res) => {
 ========================= */
 
 app.post('/withdraw', async (req, res) => {
-
   try {
 
     const upi_id = req.body.upi_id;
@@ -356,7 +482,7 @@ UPI: ${upi_id}
 Amount: ₹${amount}
 `;
 
-    await sendTelegram(ADMIN_CHAT_ID, msg);
+    await sendTelegram('1761198919', msg);
 
     res.json({
       success: true,
