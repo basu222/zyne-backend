@@ -163,8 +163,6 @@ app.get('/postback', async (req, res) => {
       );
     }
 
-    /* TELEGRAM ALERT */
-
     const msg = `
 🟢 OFFER COMPLETED
 
@@ -186,12 +184,6 @@ Click ID: ${click_id}
 });
 
 /* =========================
-   START SERVER
-========================= */
-
-app.listen(3000, () => {
-  console.log('Server Running');
-});/* =========================
    WALLET API
 ========================= */
 
@@ -217,4 +209,78 @@ app.post('/wallet', async (req, res) => {
       error: err.message,
     });
   }
+});
+
+/* =========================
+   WITHDRAW API
+========================= */
+
+app.post('/withdraw', async (req, res) => {
+  try {
+    const { upi_id, amount } = req.body;
+
+    const walletResult = await pool.query(
+      `SELECT * FROM wallet WHERE upi_id = $1`,
+      [upi_id]
+    );
+
+    if (walletResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Wallet not found',
+      });
+    }
+
+    const wallet = walletResult.rows[0];
+
+    if (wallet.balance < amount) {
+      return res.status(400).json({
+        error: 'Insufficient balance',
+      });
+    }
+
+    /* DEDUCT BALANCE */
+
+    await pool.query(
+      `UPDATE wallet
+       SET balance = balance - $1
+       WHERE upi_id = $2`,
+      [amount, upi_id]
+    );
+
+    /* SAVE WITHDRAWAL */
+
+    await pool.query(
+      `INSERT INTO withdrawals
+      (upi_id, amount, status)
+      VALUES ($1, $2, $3)`,
+      [upi_id, amount, 'pending']
+    );
+
+    /* TELEGRAM ALERT */
+
+    const msg = `
+💸 WITHDRAWAL REQUEST
+
+UPI: ${upi_id}
+Amount: ₹${amount}
+`;
+
+    await sendTelegram(msg);
+
+    res.json({
+      success: true,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+    });
+  }
+});
+
+/* =========================
+   START SERVER
+========================= */
+
+app.listen(3000, () => {
+  console.log('Server Running');
 });
