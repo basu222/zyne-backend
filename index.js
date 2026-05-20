@@ -718,15 +718,13 @@ UPI: ${upi_id}
 
 Amount: ₹${amount}
 `;
-
-    await sendTelegram(
-
-      ADMIN_CHAT_ID,
-
-      msg
-
-    );
-
+await axios.post(
+`https://api.telegram.org/bot8812621407:AAE3KwfKCJkXHh_l2lr09QmrpdGbbOL9t3s/sendMessage`,
+{
+chat_id:1761198919,
+text: msg
+}
+);
     res.json({
       success:true
     });
