@@ -161,11 +161,12 @@ app.post('/add-offer', async(req,res)=>{
         image,
         tracking_link,
         description,
-        steps
+        steps,
+        status
       )
 
       VALUES
-      ($1,$2,$3,$4,$5,$6)`,
+      ($1,$2,$3,$4,$5,$6,$7)`,
 
       [
         title,
@@ -173,16 +174,22 @@ app.post('/add-offer', async(req,res)=>{
         image,
         tracking_link,
         description,
-        steps
+        steps,
+        'active'
       ]
 
     );
 
     res.json({
-      success:true
+
+      success:true,
+      message:'Offer Added Successfully'
+
     });
 
   }catch(err){
+
+    console.log(err);
 
     res.status(500).json({
       error:err.message
