@@ -323,7 +323,20 @@ app.post('/click', async(req,res)=>{
       ]
 
     );
+const msg = `
+🔥 NEW CLICK
 
+UPI: ${upi_id}
+
+Offer ID: ${offer_id}
+
+Click ID: ${click_id}
+`;
+
+await sendTelegram(
+  TRACKING_CHANNEL_ID,
+  msg
+);
     res.json({
 
       success:true,
